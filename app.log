@@ -1,0 +1,14 @@
+2024-05-31 14:54:59,266 - ERROR - Erro ao Listar Tabelas: Unread result found
+2024-05-31 14:55:01,511 - ERROR - Erro ao Listar Tabelas: Unread result found
+2024-05-31 14:55:05,811 - ERROR - Erro ao Listar Tabelas: Unread result found
+2024-05-31 14:55:08,236 - ERROR - Erro ao Listar Tabelas: Unread result found
+2024-05-31 15:02:14,786 - ERROR - Erro ao Listar Tabelas: Unread result found
+2024-05-31 15:21:29,058 - ERROR - Erro ao Listar Tabelas: Unread result found
+2024-05-31 15:21:32,286 - ERROR - Erro ao Listar Tabelas: Unread result found
+2024-05-31 15:27:00,872 - ERROR - Erro ao importar tabela juquinha: 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near ');
+INSERT INTO clientes2 VALUES ('rafael', '18', 'mandiocamundi', 'M', '(64)9...' at line 7
+2024-05-31 15:27:31,960 - ERROR - Erro ao importar tabela juquinha: 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near ');
+INSERT INTO clientes2 VALUES ('rafael', '18', 'mandiocamundi', 'M', '(64)9...' at line 7
+2024-05-31 15:27:50,913 - ERROR - Erro ao importar tabela juquinha: 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near ');
+INSERT INTO clientes2 VALUES ('rafael', '18', 'mandiocamundi', 'M', '(64)9...' at line 7
+2024-05-31 16:27:17,609 - ERROR - Erro de Conexão: 2003: Can't connect to MySQL server on 'localhost:3306' (10061 Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente)

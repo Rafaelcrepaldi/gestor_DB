@@ -1,7 +1,13 @@
+import os
+import re
 import tkinter as tk
 from tkinter import ttk, messagebox
+from tkinter import filedialog
+import mysql.connector
 from mysql.connector import connect, Error
 import logging
+import ttkthemes
+
 
 # Configuração do logging
 logging.basicConfig(filename='app.log', level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -45,9 +51,36 @@ class ConectarDB:
         return self.cur.fetchone()
 
     def obter_colunas(self, tabela):
-        query = f'SHOW COLUMNS FROM {tabela};'
-        self.cur.execute(query)
-        return [coluna[0] for coluna in self.cur.fetchall()]
+        if not tabela:
+            raise ValueError("Table name must be provided.")
+        
+        query = f"SHOW COLUMNS FROM `{tabela}`"
+        print(f"Executing query: {query}")  # Debugging statement
+        
+        try:
+            self.cur.execute(query)
+            colunas = self.cur.fetchall()
+            return colunas
+        except mysql.connector.Error as err:
+            print(f"Error: {err}")
+            return []
+        
+    def obter_nomes_colunas(self, tabela):
+        if not tabela:
+            raise ValueError("Table name must be provided.")
+        
+        query = f"SHOW COLUMNS FROM `{tabela}`"
+        print(f"Executing query: {query}")  # Debugging statement
+        
+        try:
+            self.cur.execute(query)
+            colunas = self.cur.fetchall()
+            nomes_colunas = [coluna[0] for coluna in colunas]  # Extrai o nome de cada coluna
+            return nomes_colunas
+        except mysql.connector.Error as err:
+            print(f"Error: {err}")
+            return []
+
 
     def alterar_linha(self, tabela, rowid, dados):
         set_clause = ', '.join([f"{col} = %s" for col in dados.keys()])
@@ -104,14 +137,70 @@ class ConectarDB:
             logging.error(f"Erro ao Listar Tabelas: {e}")
             messagebox.showerror("Erro ao Listar Tabelas", f"Falha ao listar tabelas: {e}")
             return []
+        
+    def exportar_para_sql(self, tabela, caminho_arquivo):
+        try:
+            query = f'SELECT * FROM {tabela};'
+            self.cur.execute(query)
+            registros = self.cur.fetchall()
+            if registros:
+                colunas = self.obter_colunas(tabela)
+                with open(caminho_arquivo, 'w', encoding='utf-8') as arquivo_sql:
+                    arquivo_sql.write(f"CREATE TABLE {tabela} (\n")
+                    for i, coluna in enumerate(colunas):
+                        arquivo_sql.write(f"    {coluna} TEXT")
+                        if i < len(colunas) - 1:
+                            arquivo_sql.write(",\n")
+                        else:
+                            arquivo_sql.write("\n")
+                    arquivo_sql.write(");\n")
+                    for registro in registros:
+                        valores = ', '.join([f"'{str(valor)}'" for valor in registro])
+                        arquivo_sql.write(f"INSERT INTO {tabela} ({', '.join(colunas)}) VALUES ({valores});\n")
+                logging.info(f"Tabela {tabela} exportada com sucesso para {caminho_arquivo}")
+            else:
+                logging.warning(f"A consulta SQL não retornou resultados para a tabela {tabela}")
+        except Error as e:
+            logging.error(f"Erro ao exportar tabela {tabela}: {e}")
+            raise
 
-class Aplicacao(tk.Tk):
-    def __init__(self):
-        super().__init__()
-        self.title("Interface CRUD")
-        self.geometry(None)
-        self.style = ttk.Style(self)
-        self.style.theme_use('clam')
+
+    def importar_de_sql(self, caminho_arquivo, tabela):
+        try:
+            with open(caminho_arquivo, 'r', encoding='utf-8') as arquivo_sql:
+                sql_script = arquivo_sql.read()
+                self.cur.execute(f"DROP TABLE IF EXISTS {tabela}")
+                self.cur.execute(sql_script)
+                self.con.commit()
+            logging.info(f"Tabela {tabela} importada com sucesso de {caminho_arquivo}")
+        except Error as e:
+            logging.error(f"Erro ao importar tabela {tabela}: {e}")
+            raise
+    def listar_tabelas_apos_criacao(self):
+        query = "SHOW TABLES;"
+        try:
+            self.cur.execute(query)
+            tabelas = self.cur.fetchall()
+            return [tabela[0] for tabela in tabelas]
+        except Error as e:
+            logging.error(f"Erro ao listar tabelas após criação: {e}")
+            raise
+   
+
+
+
+class Aplicacao(tk.Frame):  # Inherit from tk.Frame
+    def __init__(self, master):
+        super().__init__(master)
+        self.master = master
+        self.pack()
+
+        self.master.title("Interface CRUD")
+        self.master.geometry(None)
+
+        self.style = ttkthemes.ThemedStyle(self)
+        self.style.set_theme("adapta")
+
         self.db = ConectarDB()
 
         self.criar_widgets()
@@ -121,17 +210,93 @@ class Aplicacao(tk.Tk):
         self.notebook.pack(pady=10, expand=True)
 
         self.frames = {}
-        for tab in ["Criar", "Ler", "Atualizar", "Excluir", "Nova Tabela"]:
+        for tab in ["Importar/Exportar","Criar", "Ler", "Atualizar", "Excluir", "Nova Tabela", "Editor SQL"]:
             frame = ttk.Frame(self.notebook, width=800, height=600)
             frame.pack(fill="both", expand=True)
             self.notebook.add(frame, text=tab)
             self.frames[tab] = frame
 
+        self.tab_importar_exportar()
         self.tab_criar()
         self.tab_ler()
         self.tab_atualizar()
         self.tab_excluir()
         self.tab_nova_tabela()
+        self.tab_editor_sql()
+
+    def tab_nova_tabela(self):
+        frame = self.frames["Nova Tabela"]
+
+        ttk.Label(frame, text="Nome da Tabela:").grid(row=0, column=0, padx=10, pady=10)
+        self.nome_tabela = ttk.Entry(frame)
+        self.nome_tabela.grid(row=0, column=1, padx=10, pady=10)
+
+        self.frame_colunas = ttk.Frame(frame)
+        self.frame_colunas.grid(row=1, column=0, columnspan=2, pady=10)
+
+        self.colunas = []
+        self.adicionar_coluna()
+
+        self.botao_adicionar_coluna = ttk.Button(frame, text="Adicionar Coluna", command=self.adicionar_coluna)
+        self.botao_adicionar_coluna.grid(row=2, column=0, columnspan=2, pady=10)
+
+        self.botao_criar_tabela = ttk.Button(frame, text="Criar Tabela", command=self.criar_tabela)
+        self.botao_criar_tabela.grid(row=3, column=0, columnspan=2, pady=10)
+
+    def adicionar_coluna(self):
+        row = len(self.colunas)
+        frame_coluna = ttk.Frame(self.frame_colunas)
+        frame_coluna.grid(row=row, column=0, padx=10, pady=5, sticky="w")
+
+        ttk.Label(frame_coluna, text=f"Coluna {row+1}").grid(row=0, column=0, padx=10, pady=5)
+        entrada_coluna = ttk.Entry(frame_coluna)
+        entrada_coluna.grid(row=0, column=1, padx=10, pady=5)
+
+        ttk.Label(frame_coluna, text="Tipo").grid(row=0, column=2, padx=10, pady=5)
+        entrada_tipo = ttk.Combobox(frame_coluna, values=["INTEGER", "TEXT", "REAL", "BLOB", "NUMERIC"])
+        entrada_tipo.grid(row=0, column=3, padx=10, pady=5)
+
+        botao_excluir = ttk.Button(frame_coluna, text="Excluir", command=lambda: self.excluir_coluna(frame_coluna))
+        botao_excluir.grid(row=0, column=4, padx=10, pady=5)
+
+        self.colunas.append((frame_coluna, entrada_coluna, entrada_tipo))
+
+    def excluir_coluna(self, frame_coluna):
+        for idx, (frame, _, _) in enumerate(self.colunas):
+            if frame == frame_coluna:
+                self.colunas.pop(idx)
+                frame_coluna.destroy()
+                break
+
+    def criar_tabela(self):
+        nome_tabela = self.nome_tabela.get().strip()
+        if not nome_tabela:
+            messagebox.showwarning("Erro de Entrada", "Por favor, insira um nome para a tabela.")
+            return
+
+        colunas = []
+        for frame, entrada_coluna, entrada_tipo in self.colunas:
+            coluna = entrada_coluna.get().strip()
+            tipo = entrada_tipo.get().strip()
+            if coluna and tipo:
+                colunas.append(f"{coluna} {tipo}")
+            else:
+                messagebox.showwarning("Erro de Entrada", "Por favor, preencha todos os campos de coluna e tipo.")
+                return
+
+        if colunas:
+            query = f"CREATE TABLE {nome_tabela} ({', '.join(colunas)});"
+            try:
+                self.db.cur.execute(query)
+                self.db.con.commit()
+                messagebox.showinfo("Sucesso", f"Tabela {nome_tabela} criada com sucesso")
+                self.atualizar_listas_tabelas()
+            except Error as e:
+                messagebox.showerror("Erro de Criação", f"Falha ao criar tabela: {e}")
+        else:
+            messagebox.showwarning("Erro de Entrada", "Por favor, adicione pelo menos uma coluna.")
+
+
 
     def tab_criar(self):
         frame = self.frames["Criar"]
@@ -145,9 +310,6 @@ class Aplicacao(tk.Tk):
         self.botao_atualizar_criar = ttk.Button(frame, text="Atualizar", command=self.atualizar_listas_tabelas)
         self.botao_atualizar_criar.grid(row=0, column=2, padx=10, pady=10)
 
-        
-
-
         self.entries_criar = []
     
     def atualizar_formulario_criar(self, event):
@@ -157,7 +319,7 @@ class Aplicacao(tk.Tk):
                 widget.grid_forget()
                 
         tabela = self.lista_tabelas_criar.get()
-        colunas = self.db.obter_colunas(tabela)
+        colunas = self.db.obter_nomes_colunas(tabela)
 
     
         self.entries_criar = []
@@ -172,28 +334,6 @@ class Aplicacao(tk.Tk):
         self.botao_criar = ttk.Button(frame, text="Adicionar Registro", command=self.adicionar_registro)
         self.botao_criar.grid(row=len(colunas) + 1, column=0, columnspan=2, pady=10)
 
-
-    def tab_ler(self):
-        frame = self.frames["Ler"]
-        self.lista_tabelas = tk.StringVar()
-        ttk.Label(frame, text="Selecione a Tabela:").grid(row=0, column=0, padx=10, pady=10)
-        self.dropdown_tabelas = ttk.Combobox(frame, textvariable=self.lista_tabelas)
-        self.dropdown_tabelas.grid(row=0, column=1, padx=10, pady=10)
-        self.dropdown_tabelas['values'] = self.db.listar_tabelas()
-
-        self.botao_atualizar_ler = ttk.Button(frame, text="Atualizar", command=self.atualizar_listas_tabelas)
-        self.botao_atualizar_ler.grid(row=0, column=2, padx=10, pady=10)
-
-        self.botao_ler = ttk.Button(frame, text="Buscar Registros", command=self.buscar_registros)
-        self.botao_ler.grid(row=1, column=0, columnspan=2, pady=10)
-
-        self.tree = ttk.Treeview(frame, show="headings")
-        self.tree.grid(row=2, column=0, columnspan=2, pady=10)
-
-        self.label_total_linhas = ttk.Label(frame, text="Total de Linhas: 0")
-        self.label_total_linhas.grid(row=3, column=0, columnspan=2, pady=10)
-
-
     def adicionar_registro(self):
         tabela = self.lista_tabelas_criar.get()
         dados = {coluna: entrada.get() for coluna, entrada in self.entries_criar}
@@ -207,25 +347,29 @@ class Aplicacao(tk.Tk):
         else:
             messagebox.showwarning("Erro de Entrada", "Por favor, preencha todos os campos com dados válidos")
 
+    
     def tab_ler(self):
         frame = self.frames["Ler"]
         self.lista_tabelas = tk.StringVar()
-        ttk.Label(frame, text="Selecione a Tabela:").grid(row=0, column=0, padx=10, pady=10)
+        ttk.Label(frame, text="Selecione a Tabela:").grid(row=0, column=0, padx=10, pady=10, sticky="e")
         self.dropdown_tabelas = ttk.Combobox(frame, textvariable=self.lista_tabelas)
         self.dropdown_tabelas.grid(row=0, column=1, padx=10, pady=10)
-        self.dropdown_tabelas['values'] = self.db.listar_tabelas()
 
         self.botao_atualizar_ler = ttk.Button(frame, text="Atualizar", command=self.atualizar_listas_tabelas)
         self.botao_atualizar_ler.grid(row=0, column=2, padx=10, pady=10)
 
         self.botao_ler = ttk.Button(frame, text="Buscar Registros", command=self.buscar_registros)
-        self.botao_ler.grid(row=1, column=0, columnspan=2, pady=10)
+        self.botao_ler.grid(row=1, column=0, columnspan=3, pady=10)
 
         self.tree = ttk.Treeview(frame, show="headings")
-        self.tree.grid(row=2, column=0, columnspan=2, pady=10)
+        self.tree.grid(row=2, column=0, columnspan=3, padx=10, pady=10)
+
+        self.scrollbar = ttk.Scrollbar(frame, orient="vertical", command=self.tree.yview)
+        self.scrollbar.grid(row=2, column=3, sticky="ns")
+        self.tree.configure(yscrollcommand=self.scrollbar.set)
 
         self.label_total_linhas = ttk.Label(frame, text="Total de Linhas: 0")
-        self.label_total_linhas.grid(row=3, column=0, columnspan=2, pady=10)
+        self.label_total_linhas.grid(row=3, column=0, columnspan=3, pady=10, sticky="w")
 
     def buscar_registros(self):
         nome_tabela = self.lista_tabelas.get()
@@ -234,7 +378,7 @@ class Aplicacao(tk.Tk):
             return
 
         try:
-            colunas = self.db.obter_colunas(nome_tabela)
+            colunas = self.db.obter_nomes_colunas(nome_tabela)
             registros = self.db.encontrar_linhas(nome_tabela)
             
             self.tree.delete(*self.tree.get_children())
@@ -250,6 +394,7 @@ class Aplicacao(tk.Tk):
         except Error as e:
             messagebox.showerror("Erro de Leitura", f"Falha ao buscar registros: {e}")
 
+
     def tab_atualizar(self):
         frame = self.frames["Atualizar"]
         ttk.Label(frame, text="Selecione a Tabela:").grid(row=0, column=0, padx=10, pady=10)
@@ -262,56 +407,51 @@ class Aplicacao(tk.Tk):
         self.botao_atualizar_atualizar = ttk.Button(frame, text="Atualizar", command=self.atualizar_listas_tabelas)
         self.botao_atualizar_atualizar.grid(row=0, column=2, padx=10, pady=10)
 
-        ttk.Label(frame, text="ID do Registro:").grid(row=1, column=0, padx=10, pady=10)
-        self.entry_id_atualizar = ttk.Entry(frame)
-        self.entry_id_atualizar.grid(row=1, column=1, padx=10, pady=10)
-
-        self.botao_buscar_id = ttk.Button(frame, text="Buscar ID", command=self.buscar_registro_por_id)
-        self.botao_buscar_id.grid(row=1, column=2, padx=10, pady=10)
-
         self.entries_atualizar = []
 
     def atualizar_formulario_atualizar(self, event):
         frame = self.frames["Atualizar"]
         for widget in frame.grid_slaves():
-            if int(widget.grid_info()["row"]) > 1:
+            if int(widget.grid_info()["row"]) > 0:
                 widget.grid_forget()
                 
         tabela = self.lista_tabelas_atualizar.get()
-        colunas = self.db.obter_colunas(tabela)
-        
+        colunas = self.db.obter_nomes_colunas(tabela)
+
         self.entries_atualizar = []
         for idx, coluna in enumerate(colunas):
-            ttk.Label(frame, text=f"{coluna}:").grid(row=idx + 2, column=0, padx=10, pady=10)
+            ttk.Label(frame, text=f"{coluna}:").grid(row=idx + 1, column=0, padx=10, pady=10)
             entrada = ttk.Entry(frame)
-            entrada.grid(row=idx + 2, column=1, padx=10, pady=10)
+            entrada.grid(row=idx + 1, column=1, padx=10, pady=10)
             self.entries_atualizar.append((coluna, entrada))
         
-        self.botao_atualizar = ttk.Button(frame, text="Atualizar Registro", command=self.atualizar_registro)
-        self.botao_atualizar.grid(row=len(colunas) + 3, column=0, columnspan=2, pady=10)
+        self.botao_buscar_id = ttk.Button(frame, text="Buscar ID", command=self.buscar_id)
+        self.botao_buscar_id.grid(row=len(colunas) + 1, column=0, pady=10)
 
-    def buscar_registro_por_id(self):
+        self.botao_atualizar_registro = ttk.Button(frame, text="Atualizar Registro", command=self.atualizar_registro)
+        self.botao_atualizar_registro.grid(row=len(colunas) + 1, column=1, pady=10)
+
+    def buscar_id(self):
         tabela = self.lista_tabelas_atualizar.get()
-        rowid = self.entry_id_atualizar.get()
-        if not tabela or not rowid:
-            messagebox.showwarning("Erro de Entrada", "Por favor, preencha todos os campos com dados válidos")
-            return
-
-        try:
-            registro = self.db.encontrar_linha_por_id(tabela, rowid)
-            if registro:
-                for (coluna, entrada), valor in zip(self.entries_atualizar, registro):
-                    entrada.delete(0, tk.END)
-                    entrada.insert(0, valor)
-            else:
-                messagebox.showinfo("Registro Não Encontrado", f"Registro com ID {rowid} não encontrado.")
-        except Error as e:
-            messagebox.showerror("Erro de Leitura", f"Falha ao buscar registro: {e}")
+        id_buscar = self.entries_atualizar[0][1].get()
+        if tabela and id_buscar:
+            try:
+                registro = self.db.encontrar_linha_por_id(tabela, id_buscar)
+                if registro:
+                    for entrada, valor in zip(self.entries_atualizar, registro):
+                        entrada[1].delete(0, tk.END)
+                        entrada[1].insert(0, valor)
+                else:
+                    messagebox.showwarning("Registro Não Encontrado", "Nenhum registro encontrado com o ID fornecido")
+            except Error as e:
+                messagebox.showerror("Erro de Busca", f"Falha ao buscar registro: {e}")
+        else:
+            messagebox.showwarning("Erro de Entrada", "Por favor, selecione uma tabela e forneça um ID")
 
     def atualizar_registro(self):
         tabela = self.lista_tabelas_atualizar.get()
-        rowid = self.entry_id_atualizar.get()
-        dados = {coluna: entrada.get() for coluna, entrada in self.entries_atualizar}
+        dados = {coluna: entrada.get() for coluna, entrada in self.entries_atualizar if coluna != 'id'}
+        rowid = self.entries_atualizar[0][1].get()
         if tabela and rowid and all(dados.values()):
             try:
                 self.db.alterar_linha(tabela, rowid, dados)
@@ -332,122 +472,219 @@ class Aplicacao(tk.Tk):
         self.botao_atualizar_excluir = ttk.Button(frame, text="Atualizar", command=self.atualizar_listas_tabelas)
         self.botao_atualizar_excluir.grid(row=0, column=2, padx=10, pady=10)
 
-        ttk.Label(frame, text="ID do Registro:").grid(row=1, column=0, padx=10, pady=10)
-        self.entry_id_excluir = ttk.Entry(frame)
-        self.entry_id_excluir.grid(row=1, column=1, padx=10, pady=10)
+        self.id_excluir = ttk.Entry(frame)
+        self.id_excluir.grid(row=1, column=1, padx=10, pady=10)
 
         self.botao_excluir = ttk.Button(frame, text="Excluir Registro", command=self.excluir_registro)
-        self.botao_excluir.grid(row=1, column=2, padx=10, pady=10)
+        self.botao_excluir.grid(row=2, column=0, columnspan=3, pady=10)
 
         self.botao_excluir_tabela = ttk.Button(frame, text="Excluir Tabela", command=self.excluir_tabela)
-        self.botao_excluir_tabela.grid(row=2, column=0, columnspan=3, pady=10)
+        self.botao_excluir_tabela.grid(row=3, column=0, columnspan=3, pady=10)
 
     def excluir_registro(self):
         tabela = self.lista_tabelas_excluir.get()
-        rowid = self.entry_id_excluir.get()
-        if not tabela or not rowid:
-            messagebox.showwarning("Erro de Entrada", "Por favor, preencha todos os campos com dados válidos")
-            return
-
-        try:
-            self.db.remover_linha(tabela, rowid)
-            messagebox.showinfo("Sucesso", "Registro excluído com sucesso")
-            self.dropdown_tabelas_excluir['values'] = self.db.listar_tabelas()
-        except Error as e:
-            messagebox.showerror("Erro de Exclusão", f"Falha ao excluir registro: {e}")
+        rowid = self.id_excluir.get()
+        if tabela and rowid:
+            try:
+                self.db.remover_linha(tabela, rowid)
+                messagebox.showinfo("Sucesso", "Registro excluído com sucesso")
+                self.dropdown_tabelas_excluir['values'] = self.db.listar_tabelas()
+            except Error as e:
+                messagebox.showerror("Erro de Exclusão", f"Falha ao excluir registro: {e}")
+        else:
+            messagebox.showwarning("Erro de Entrada", "Por favor, selecione uma tabela e forneça um ID")
 
     def excluir_tabela(self):
         tabela = self.lista_tabelas_excluir.get()
-        if not tabela:
+        if tabela:
+            if messagebox.askyesno("Confirmação", f"Tem certeza que deseja excluir a tabela {tabela}?"):
+                try:
+                    self.db.excluir_tabela(tabela)
+                    messagebox.showinfo("Sucesso", "Tabela excluída com sucesso")
+                    self.dropdown_tabelas_excluir['values'] = self.db.listar_tabelas()
+                except Error as e:
+                    messagebox.showerror("Erro de Exclusão", f"Falha ao excluir tabela: {e}")
+        else:
             messagebox.showwarning("Erro de Entrada", "Por favor, selecione uma tabela")
+
+    
+    def tab_importar_exportar(self):
+        frame = self.frames["Importar/Exportar"]
+
+        ttk.Label(frame, text="Selecione a Tabela:").grid(row=0, column=0, padx=10, pady=10)
+        self.lista_tabelas_ = tk.StringVar()
+        self.dropdown_tabelas_importar_exportar = ttk.Combobox(frame, textvariable=self.atualizar_listas_tabelas)
+        self.dropdown_tabelas_importar_exportar.grid(row=0, column=1, padx=10, pady=10)
+        self.dropdown_tabelas_importar_exportar['values'] = self.db.listar_tabelas()
+
+        self.botao_atualizar_importar_exportar = ttk.Button(frame, text="Atualizar", command=self.atualizar_listas_tabelas)
+        self.botao_atualizar_importar_exportar.grid(row=0, column=2, padx=10, pady=10)
+
+        self.botao_exportar = ttk.Button(frame, text="Exportar", command=self.exportar_tabela)
+        self.botao_exportar.grid(row=1, column=0, padx=10, pady=10)
+
+        self.botao_importar = ttk.Button(frame, text="Importar", command=self.importar_tabela)
+        self.botao_importar.grid(row=1, column=1, padx=10, pady=10)
+
+        
+
+    def exportar_tabela(self):
+        tabela = self.combo_tabelas.get().strip()
+        if not tabela:
+            messagebox.showerror("Erro", "Selecione uma tabela para exportar")
             return
 
-        if messagebox.askyesno("Confirmação", f"Tem certeza que deseja excluir a tabela '{tabela}'?"):
-            try:
-                self.db.excluir_tabela(tabela)
-                messagebox.showinfo("Sucesso", "Tabela excluída com sucesso")
-                self.dropdown_tabelas_excluir['values'] = self.db.listar_tabelas()
-            except Error as e:
-                messagebox.showerror("Erro de Exclusão", f"Falha ao excluir tabela: {e}")
-
-    def tab_nova_tabela(self):
-        frame = self.frames["Nova Tabela"]
-        ttk.Label(frame, text="Nome da Tabela:").grid(row=0, column=0, padx=10, pady=10, sticky="ew")
-        self.entry_nome_tabela = ttk.Entry(frame)
-        self.entry_nome_tabela.grid(row=0, column=1, padx=10, pady=10, sticky="ew")
-
-        self.entries_nova_tabela = []
-        self.botao_add_coluna = ttk.Button(frame, text="Adicionar Coluna", command=self.add_coluna)
-        self.botao_add_coluna.grid(row=1, column=0, padx=10, pady=10, sticky="ew")
-
-        self.botao_remover_coluna = ttk.Button(frame, text="Remover Coluna", command=self.remover_coluna)
-        self.botao_remover_coluna.grid(row=1, column=1, padx=10, pady=10, sticky="ew")
-
-        self.botao_criar_tabela = ttk.Button(frame, text="Criar Tabela", command=self.criar_nova_tabela)
-        self.botao_criar_tabela.grid(row=2, column=0, columnspan=2, padx=10, pady=10, sticky="ew")
-
-        frame.columnconfigure(0, weight=1)
-        frame.columnconfigure(1, weight=1)
-
-    def add_coluna(self):
-        frame = self.frames["Nova Tabela"]
-        idx = len(self.entries_nova_tabela) + 3
-
-        label_nome_coluna = ttk.Label(frame, text=f"Nome da Coluna {idx - 2}:")
-        label_nome_coluna.grid(row=idx, column=0, padx=10, pady=10, sticky="w")
-        entrada_nome_coluna = ttk.Entry(frame)
-        entrada_nome_coluna.grid(row=idx, column=1, padx=10, pady=5, sticky="w")
-
-        label_tipo_dado = ttk.Label(frame, text="Tipo de Dado:")
-        label_tipo_dado.grid(row=idx, column=2, padx=10, pady=5, sticky="w")
-        entrada_tipo_dado = ttk.Combobox(frame, values=["VARCHAR(100)", "INT", "FLOAT", "DATE", "TEXT"])
-        entrada_tipo_dado.grid(row=idx, column=3, padx=10, pady=5, sticky="w")
-
-        self.entries_nova_tabela.append((label_nome_coluna, entrada_nome_coluna, label_tipo_dado, entrada_tipo_dado))
-
-        frame.columnconfigure(0, weight=1)
-        frame.columnconfigure(1, weight=1)
-        frame.columnconfigure(2, weight=1)
-        frame.columnconfigure(3, weight=1)
-
-    def remover_coluna(self):
-        if self.entries_nova_tabela:
-            labels = self.entries_nova_tabela.pop()
-            for label in labels:
-                label.grid_forget()
-            
-    def criar_nova_tabela(self):
-        nome_tabela = self.entry_nome_tabela.get().strip()
-        colunas = [(entrada_nome.get().strip(), entrada_tipo.get().strip()) for entrada_nome, entrada_tipo in self.entries_nova_tabela if entrada_nome.get().strip() and entrada_tipo.get().strip()]
-
-        if not nome_tabela or not colunas:
-            messagebox.showwarning("Erro de Entrada", "Por favor, forneça um nome para a tabela e pelo menos uma coluna com seu tipo de dado")
+        caminho_arquivo = filedialog.asksaveasfilename(defaultextension=".sql", filetypes=[("SQL Files", "*.sql")])
+        if not caminho_arquivo:
             return
-
-        colunas_sql = ", ".join([f"{nome} {tipo}" for nome, tipo in colunas])
-        query = f"CREATE TABLE {nome_tabela} (id INT AUTO_INCREMENT PRIMARY KEY, {colunas_sql});"
 
         try:
-            self.db.cur.execute(query)
-            self.db.con.commit()
-            messagebox.showinfo("Sucesso", "Tabela criada com sucesso")
-            self.entry_nome_tabela.delete(0, tk.END)
-            for entrada_nome, entrada_tipo in self.entries_nova_tabela:
-                entrada_nome.delete(0, tk.END)
-                entrada_tipo.set('')
-            self.entries_nova_tabela = []
+            self.db.exportar_para_sql(tabela, caminho_arquivo)
+            messagebox.showinfo("Sucesso", f"Tabela {tabela} exportada com sucesso para {caminho_arquivo}")
         except Error as e:
-            messagebox.showerror("Erro de Criação", f"Falha ao criar tabela: {e}")
+            messagebox.showerror("Erro", f"Erro ao exportar tabela: {e}")
 
+    import re
+
+    def importar_tabela(self):
+        caminho_arquivo = filedialog.askopenfilename(filetypes=[("SQL Files", "*.sql")])
+        if not caminho_arquivo:
+            return
+
+        nome_tabela = os.path.splitext(os.path.basename(caminho_arquivo))[0]
+
+        try:
+            with open(caminho_arquivo, 'r') as arquivo:
+                sql_script = arquivo.read()
+
+            # Dividir o script SQL em comandos individuais
+            sql_commands = re.split(';\s*\n', sql_script)
+
+            # Executar cada comando individualmente
+            for command in sql_commands:
+                if command.strip():
+                    if command.lower().startswith('create table'):
+                        # Se o comando for uma declaração CREATE TABLE,
+                        # extraímos o nome da tabela e as colunas
+                        table_name_match = re.search(r'CREATE TABLE\s+(\w+)\s*\((.*)\)', command, re.IGNORECASE)
+                        if table_name_match:
+                            table_name = table_name_match.group(1)
+                            column_defs = table_name_match.group(2).split(',')
+                            column_names = [col.strip().split()[0] for col in column_defs]
+                            column_names_str = ', '.join(column_names)
+                            command = f'CREATE TABLE {table_name} ({table_name}ID INTEGER PRIMARY KEY AUTOINCREMENT, {", ".join(column_defs)})'
+                    
+                    self.db.cur.execute(command.strip())
+
+            self.db.con.commit()
+            messagebox.showinfo("Sucesso", f"Tabela {nome_tabela} importada com sucesso de {caminho_arquivo}")
+
+        except Error as e:
+            self.db.con.rollback()
+            messagebox.showerror("Erro", f"Erro ao importar tabela: {e}")
+
+        # Atualizar a lista de tabelas
+        self.combo_tabelas['values'] = self.db.listar_tabelas()
+        self.combo_tabelas_criar['values'] = self.db.listar_tabelas()
+        self.combo_tabelas_ler['values'] = self.db.listar_tabelas()
+        self.combo_tabelas_atualizar['values'] = self.db.listar_tabelas()
+        self.combo_tabelas_excluir['values'] = self.db.listar_tabelas()
 
     def atualizar_listas_tabelas(self):
         tabelas = self.db.listar_tabelas()
+        self.dropdown_tabelas_importar_exportar['values'] = tabelas
         self.dropdown_tabelas_criar['values'] = tabelas
         self.dropdown_tabelas['values'] = tabelas
         self.dropdown_tabelas_atualizar['values'] = tabelas
         self.dropdown_tabelas_excluir['values'] = tabelas
 
+    def tab_editor_sql(self):
+        frame = self.frames["Editor SQL"]
+
+        self.texto_sql = tk.Text(frame, wrap="word", width=100, height=20)
+        self.texto_sql.pack(padx=10, pady=10)
+
+        self.botao_executar_sql = ttk.Button(frame, text="Executar SQL", command=self.executar_sql)
+        self.botao_executar_sql.pack(pady=10)
+
+        self.resultados_sql = tk.Text(frame, wrap="word", width=100, height=10, state="disabled")
+        self.resultados_sql.pack(padx=10, pady=10)
+
+        self.botao_exportar = ttk.Button(frame, text="Exportar Resultados", command=self.exportar_resultados)
+        self.botao_exportar.pack(pady=10)
+
+    def executar_sql(self):
+        query = self.texto_sql.get("1.0", "end-1c").strip()
+        if not query:
+            messagebox.showwarning("Atenção", "Por favor, insira um comando SQL.")
+            return
+
+        try:
+            self.db.cur.execute(query)
+            if query.upper().startswith("SELECT"):
+                resultados = self.db.cur.fetchall()
+                colunas = [desc[0] for desc in self.db.cur.description]
+
+                self.resultados_sql.config(state="normal")
+                self.resultados_sql.delete("1.0", "end")
+
+                # Escrever cabeçalhos das colunas
+                self.resultados_sql.insert("end", "\t".join(colunas) + "\n")
+                # Escrever registros
+                for row in resultados:
+                    self.resultados_sql.insert("end", "\t".join(map(str, row)) + "\n")
+
+                self.resultados_sql.config(state="disabled")
+                self.resultados_obtidos = {"colunas": colunas, "dados": resultados}
+            else:
+                self.db.con.commit()
+                self.resultados_sql.config(state="normal")
+                self.resultados_sql.delete("1.0", "end")
+                self.resultados_sql.insert("end", "Comando SQL executado com sucesso.")
+                self.resultados_sql.config(state="disabled")
+                self.resultados_obtidos = None
+
+                messagebox.showinfo("Sucesso", "Comando SQL executado com sucesso")
+        except Error as e:
+            self.resultados_sql.config(state="normal")
+            self.resultados_sql.delete("1.0", "end")
+            self.resultados_sql.insert("end", f"Falha ao executar comando SQL: {e}")
+            self.resultados_sql.config(state="disabled")
+            messagebox.showerror("Erro de Execução", f"Falha ao executar comando SQL: {e}")
+    
+
+    def exportar_resultados(self):
+        if not hasattr(self, 'resultados_obtidos') or self.resultados_obtidos is None:
+            messagebox.showwarning("Atenção", "Não há resultados para exportar.")
+            return
+
+        arquivo = filedialog.asksaveasfilename(defaultextension=".sql", filetypes=[("Arquivos SQL", "*.sql")])
+        if not arquivo:
+            return
+
+        tabela = input("Nome da tabela para exportar os resultados: ")  # Solicita o nome da tabela
+        if not tabela:
+            messagebox.showwarning("Atenção", "Por favor, insira o nome da tabela.")
+            return
+
+        colunas = self.resultados_obtidos.get("colunas", [])
+        dados = self.resultados_obtidos.get("dados", [])
+
+        try:
+            with open(arquivo, mode='w', newline='') as file:
+                file.write(f"CREATE TABLE {tabela} (\n")
+                for coluna in colunas:
+                    file.write(f"    {coluna} TEXT,\n")
+                file.write(");\n")
+                for registro in dados:
+                    valores = ', '.join([f"'{str(valor)}'" for valor in registro])
+                    file.write(f"INSERT INTO {tabela} VALUES ({valores});\n")
+            messagebox.showinfo("Sucesso", "Resultados exportados com sucesso.")
+        except Exception as e:
+            messagebox.showerror("Erro", f"Falha ao exportar resultados: {e}")
+
 
 if __name__ == "__main__":
-    app = Aplicacao()
+    root = tk.Tk()
+    app = Aplicacao(master=root)
     app.mainloop()
