@@ -350,49 +350,66 @@ class Aplicacao(tk.Frame):  # Inherit from tk.Frame
     
     def tab_ler(self):
         frame = self.frames["Ler"]
-        self.lista_tabelas = tk.StringVar()
-        ttk.Label(frame, text="Selecione a Tabela:").grid(row=0, column=0, padx=10, pady=10, sticky="e")
-        self.dropdown_tabelas = ttk.Combobox(frame, textvariable=self.lista_tabelas)
-        self.dropdown_tabelas.grid(row=0, column=1, padx=10, pady=10)
 
-        self.botao_atualizar_ler = ttk.Button(frame, text="Atualizar", command=self.atualizar_listas_tabelas)
-        self.botao_atualizar_ler.grid(row=0, column=2, padx=10, pady=10)
+        ttk.Label(frame, text="Tabela:").grid(row=0, column=0, padx=10, pady=10)
+        
+        self.checkboxes = []
+        self.var_checkboxes = []
+        
+        # Botão para atualizar as tabelas disponíveis
+        self.botao_atualizar_tabelas = ttk.Button(frame, text="Atualizar Tabelas", command=self.atualizar_tabelas_disponiveis)
+        self.botao_atualizar_tabelas.grid(row=0, column=1, padx=10, pady=10)
+        
+        # Placeholder for checkboxes
+        self.checkboxes_frame = ttk.Frame(frame)
+        self.checkboxes_frame.grid(row=1, column=0, columnspan=2, sticky="w")
 
-        self.botao_ler = ttk.Button(frame, text="Buscar Registros", command=self.buscar_registros)
-        self.botao_ler.grid(row=1, column=0, columnspan=3, pady=10)
+        self.botao_mostrar_tabelas = ttk.Button(frame, text="Mostrar Tabelas", command=self.mostrar_tabelas_selecionadas)
+        self.botao_mostrar_tabelas.grid(row=2, column=0, columnspan=2, pady=10)
 
-        self.tree = ttk.Treeview(frame, show="headings")
-        self.tree.grid(row=2, column=0, columnspan=3, padx=10, pady=10)
+        self.tabela_resultado = ttk.Treeview(frame)
+        self.tabela_resultado.grid(row=3, column=0, columnspan=2, pady=10)
+        
+        # Atualizar as tabelas disponíveis ao carregar o frame
+        self.atualizar_tabelas_disponiveis()
 
-        self.scrollbar = ttk.Scrollbar(frame, orient="vertical", command=self.tree.yview)
-        self.scrollbar.grid(row=2, column=3, sticky="ns")
-        self.tree.configure(yscrollcommand=self.scrollbar.set)
+    def atualizar_tabelas_disponiveis(self):
+        # Limpar checkboxes existentes
+        for widget in self.checkboxes_frame.winfo_children():
+            widget.destroy()
+        
+        self.checkboxes = []
+        self.var_checkboxes = []
+        tabelas = self.db.listar_tabelas()
+        
+        for tabela in tabelas:
+            var = tk.BooleanVar()
+            checkbox = ttk.Checkbutton(self.checkboxes_frame, text=tabela, variable=var)
+            checkbox.grid(sticky="w")
+            self.checkboxes.append(checkbox)
+            self.var_checkboxes.append(var)
 
-        self.label_total_linhas = ttk.Label(frame, text="Total de Linhas: 0")
-        self.label_total_linhas.grid(row=3, column=0, columnspan=3, pady=10, sticky="w")
+    def mostrar_tabelas_selecionadas(self):
+        tabelas_selecionadas = [tabela.cget("text") for tabela, var in zip(self.checkboxes, self.var_checkboxes) if var.get()]
 
-    def buscar_registros(self):
-        nome_tabela = self.lista_tabelas.get()
-        if not nome_tabela:
-            messagebox.showwarning("Erro de Entrada", "Por favor, selecione uma tabela")
-            return
-
-        try:
-            colunas = self.db.obter_nomes_colunas(nome_tabela)
-            registros = self.db.encontrar_linhas(nome_tabela)
+        # Limpar a Treeview antes de inserir novas linhas
+        for item in self.tabela_resultado.get_children():
+            self.tabela_resultado.delete(item)
             
-            self.tree.delete(*self.tree.get_children())
-            self.tree["columns"] = colunas
+        for tabela in tabelas_selecionadas:
+            linhas = self.db.encontrar_linhas(tabela)
+            colunas = self.db.obter_nomes_colunas(tabela)
+            
+            # Configurar as colunas da Treeview
+            self.tabela_resultado["columns"] = colunas
+            self.tabela_resultado["show"] = "headings"  # Ocultar a primeira coluna que é a coluna padrão vazia
+            
             for col in colunas:
-                self.tree.heading(col, text=col)
-                self.tree.column(col, width=100)
+                self.tabela_resultado.heading(col, text=col)
+                self.tabela_resultado.column(col, width=100)  # Ajustar a largura da coluna conforme necessário
             
-            for registro in registros:
-                self.tree.insert("", tk.END, values=registro)
-            
-            self.label_total_linhas.config(text=f"Total de Linhas: {len(registros)}")
-        except Error as e:
-            messagebox.showerror("Erro de Leitura", f"Falha ao buscar registros: {e}")
+            for linha in linhas:
+                self.tabela_resultado.insert("", "end", values=linha)
 
 
     def tab_atualizar(self):
