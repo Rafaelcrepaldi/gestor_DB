@@ -187,34 +187,31 @@ class ConectarDB:
             raise
    
 
-
-
 class Aplicacao(tk.Frame):  # Inherit from tk.Frame
     def __init__(self, master):
         super().__init__(master)
         self.master = master
-        self.pack()
+        self.pack(fill="both", expand=True)
 
         self.master.title("Interface CRUD")
         self.master.geometry(None)
 
         self.style = ttkthemes.ThemedStyle(self)
-        self.style.set_theme("adapta")
+        self.style.set_theme("equilux")
 
         self.db = ConectarDB()
 
-        self.criar_widgets()
-
-    def criar_widgets(self):
         self.notebook = ttk.Notebook(self)
-        self.notebook.pack(pady=10, expand=True)
+        self.notebook.pack(fill="both", expand=True)
 
         self.frames = {}
         for tab in ["Importar/Exportar","Criar", "Ler", "Atualizar", "Excluir", "Nova Tabela", "Editor SQL"]:
-            frame = ttk.Frame(self.notebook, width=800, height=600)
-            frame.pack(fill="both", expand=True)
+            frame = ttk.Frame(self.notebook)
+            frame.grid(row=0, column=0, sticky="nsew") 
             self.notebook.add(frame, text=tab)
             self.frames[tab] = frame
+
+   
 
         self.tab_importar_exportar()
         self.tab_criar()
@@ -246,7 +243,7 @@ class Aplicacao(tk.Frame):  # Inherit from tk.Frame
     def adicionar_coluna(self):
         row = len(self.colunas)
         frame_coluna = ttk.Frame(self.frame_colunas)
-        frame_coluna.grid(row=row, column=0, padx=10, pady=5, sticky="w")
+        frame_coluna.grid(row=row, column=0, padx=10, pady=5, sticky="nesw")
 
         ttk.Label(frame_coluna, text=f"Coluna {row+1}").grid(row=0, column=0, padx=10, pady=5)
         entrada_coluna = ttk.Entry(frame_coluna)
@@ -297,7 +294,6 @@ class Aplicacao(tk.Frame):  # Inherit from tk.Frame
             messagebox.showwarning("Erro de Entrada", "Por favor, adicione pelo menos uma coluna.")
 
 
-
     def tab_criar(self):
         frame = self.frames["Criar"]
         ttk.Label(frame, text="Selecione a Tabela:").grid(row=0, column=0, padx=10, pady=10)
@@ -311,7 +307,7 @@ class Aplicacao(tk.Frame):  # Inherit from tk.Frame
         self.botao_atualizar_criar.grid(row=0, column=2, padx=10, pady=10)
 
         self.entries_criar = []
-    
+
     def atualizar_formulario_criar(self, event):
         frame = self.frames["Criar"]
         for widget in frame.grid_slaves():
@@ -353,63 +349,56 @@ class Aplicacao(tk.Frame):  # Inherit from tk.Frame
 
         ttk.Label(frame, text="Tabela:").grid(row=0, column=0, padx=10, pady=10)
         
-        self.checkboxes = []
-        self.var_checkboxes = []
+        self.radiobuttons = []
+        self.var_radiobutton = tk.StringVar()
         
         # Botão para atualizar as tabelas disponíveis
         self.botao_atualizar_tabelas = ttk.Button(frame, text="Atualizar Tabelas", command=self.atualizar_tabelas_disponiveis)
         self.botao_atualizar_tabelas.grid(row=0, column=1, padx=10, pady=10)
         
-        # Placeholder for checkboxes
-        self.checkboxes_frame = ttk.Frame(frame)
-        self.checkboxes_frame.grid(row=1, column=0, columnspan=2, sticky="w")
-
-        self.botao_mostrar_tabelas = ttk.Button(frame, text="Mostrar Tabelas", command=self.mostrar_tabelas_selecionadas)
-        self.botao_mostrar_tabelas.grid(row=2, column=0, columnspan=2, pady=10)
+        # Placeholder for radiobuttons
+        self.radiobuttons_frame = ttk.Frame(frame)
+        self.radiobuttons_frame.grid(row=1, column=0, columnspan=2, sticky="w")
 
         self.tabela_resultado = ttk.Treeview(frame)
-        self.tabela_resultado.grid(row=3, column=0, columnspan=2, pady=10)
+        self.tabela_resultado.grid(row=2, column=0, columnspan=2, pady=10)
         
         # Atualizar as tabelas disponíveis ao carregar o frame
         self.atualizar_tabelas_disponiveis()
 
     def atualizar_tabelas_disponiveis(self):
-        # Limpar checkboxes existentes
-        for widget in self.checkboxes_frame.winfo_children():
+        # Limpar radiobuttons existentes
+        for widget in self.radiobuttons_frame.winfo_children():
             widget.destroy()
         
-        self.checkboxes = []
-        self.var_checkboxes = []
+        self.radiobuttons = []
         tabelas = self.db.listar_tabelas()
         
         for tabela in tabelas:
-            var = tk.BooleanVar()
-            checkbox = ttk.Checkbutton(self.checkboxes_frame, text=tabela, variable=var)
-            checkbox.grid(sticky="w")
-            self.checkboxes.append(checkbox)
-            self.var_checkboxes.append(var)
+            radiobutton = ttk.Radiobutton(self.radiobuttons_frame, text=tabela, variable=self.var_radiobutton, value=tabela, command=self.mostrar_tabela_selecionada)
+            radiobutton.grid(sticky="w")
+            self.radiobuttons.append(radiobutton)
 
-    def mostrar_tabelas_selecionadas(self):
-        tabelas_selecionadas = [tabela.cget("text") for tabela, var in zip(self.checkboxes, self.var_checkboxes) if var.get()]
+    def mostrar_tabela_selecionada(self):
+        tabela_selecionada = self.var_radiobutton.get()
 
         # Limpar a Treeview antes de inserir novas linhas
         for item in self.tabela_resultado.get_children():
             self.tabela_resultado.delete(item)
             
-        for tabela in tabelas_selecionadas:
-            linhas = self.db.encontrar_linhas(tabela)
-            colunas = self.db.obter_nomes_colunas(tabela)
-            
-            # Configurar as colunas da Treeview
-            self.tabela_resultado["columns"] = colunas
-            self.tabela_resultado["show"] = "headings"  # Ocultar a primeira coluna que é a coluna padrão vazia
-            
-            for col in colunas:
-                self.tabela_resultado.heading(col, text=col)
-                self.tabela_resultado.column(col, width=100)  # Ajustar a largura da coluna conforme necessário
-            
-            for linha in linhas:
-                self.tabela_resultado.insert("", "end", values=linha)
+        linhas = self.db.encontrar_linhas(tabela_selecionada)
+        colunas = self.db.obter_nomes_colunas(tabela_selecionada)
+        
+        # Configurar as colunas da Treeview
+        self.tabela_resultado["columns"] = colunas
+        self.tabela_resultado["show"] = "headings"  # Ocultar a primeira coluna que é a coluna padrão vazia
+        
+        for col in colunas:
+            self.tabela_resultado.heading(col, text=col)
+            self.tabela_resultado.column(col, width=100)  # Ajustar a largura da coluna conforme necessário
+        
+        for linha in linhas:
+            self.tabela_resultado.insert("", "end", values=linha)
 
 
     def tab_atualizar(self):
@@ -611,7 +600,6 @@ class Aplicacao(tk.Frame):  # Inherit from tk.Frame
         tabelas = self.db.listar_tabelas()
         self.dropdown_tabelas_importar_exportar['values'] = tabelas
         self.dropdown_tabelas_criar['values'] = tabelas
-        self.dropdown_tabelas['values'] = tabelas
         self.dropdown_tabelas_atualizar['values'] = tabelas
         self.dropdown_tabelas_excluir['values'] = tabelas
 

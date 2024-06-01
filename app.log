@@ -12,3 +12,4 @@ INSERT INTO clientes2 VALUES ('rafael', '18', 'mandiocamundi', 'M', '(64)9...' a
 2024-05-31 15:27:50,913 - ERROR - Erro ao importar tabela juquinha: 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near ');
 INSERT INTO clientes2 VALUES ('rafael', '18', 'mandiocamundi', 'M', '(64)9...' at line 7
 2024-05-31 16:27:17,609 - ERROR - Erro de Conexão: 2003: Can't connect to MySQL server on 'localhost:3306' (10061 Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente)
+2024-06-01 00:14:18,683 - ERROR - Erro de Conexão: 2003: Can't connect to MySQL server on 'localhost:3306' (10061 Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente)

@@ -1,58 +1,40 @@
 # Interface CRUD com Tkinter e MySQL
 
-Este projeto é uma aplicação de interface gráfica (GUI) desenvolvida com Tkinter que permite operações CRUD (Criar, Ler, Atualizar, Excluir) em um banco de dados MySQL.
+Este é um programa que oferece uma interface gráfica para realizar operações CRUD (Create, Read, Update, Delete) em um banco de dados MySQL. Ele foi desenvolvido utilizando a biblioteca Tkinter para a interface gráfica e MySQL Connector para se comunicar com o banco de dados MySQL.
 
 ## Funcionalidades
 
-- **Conexão com Banco de Dados MySQL:** Conecta-se ao banco de dados especificado e permite operações CRUD nas tabelas.
-- **CRUD em Tabelas Existentes:** Interface para criar novos registros, ler registros existentes, atualizar registros e excluir registros de tabelas existentes.
-- **Criação de Novas Tabelas:** Interface para criar novas tabelas no banco de dados.
-- **Logging de Erros:** Registra erros em um arquivo de log (`app.log`).
+- **Criar**: Permite criar uma nova tabela no banco de dados, especificando o nome da tabela e suas colunas.
+- **Ler**: Permite visualizar os registros de uma tabela existente, selecionando a tabela desejada e exibindo os dados em uma interface de tabela.
+- **Atualizar**: Possibilita atualizar os registros de uma tabela existente, fornecendo o ID do registro a ser atualizado e os novos valores para suas colunas.
+- **Excluir**: Permite excluir registros de uma tabela existente, fornecendo o ID do registro a ser excluído.
+- **Importar/Exportar**: Oferece a capacidade de importar e exportar dados de tabelas no formato SQL.
+- **Editor SQL**: Permite executar comandos SQL personalizados e visualizar os resultados.
 
-## Dependências
+## Requisitos
 
-- `mysql-connector-python`: Biblioteca para conexão com MySQL.
-- `tkinter`: Biblioteca padrão do Python para interfaces gráficas.
-- `logging`: Biblioteca padrão do Python para logging.
+- Python 3.x
+- MySQL Server
+- MySQL Connector Python
+- Tkinter
+- ttkthemes
 
-## Instalação
+## Como usar
 
-1. **Clone o repositório:**
-    ```sh
-    git clone <url-do-repositorio>
-    cd <nome-do-repositorio>
-    ```
+1. Certifique-se de ter instalado todas as dependências listadas nos requisitos.
+2. Execute o programa `interface_crud.py`.
+3. A interface gráfica será aberta, permitindo que você execute as operações CRUD e utilize o editor SQL.
 
-2. **Crie um ambiente virtual:**
-    ```sh
-    python -m venv venv
-    ```
+## Estrutura do Código
 
-3. **Ative o ambiente virtual:**
+- `interface_crud.py`: Contém o código-fonte principal do programa, que define a interface gráfica e suas funcionalidades.
+- `conectar_db.py`: Classe responsável por lidar com a conexão com o banco de dados e as operações CRUD.
+- `app.log`: Arquivo de log para registrar erros durante a execução do programa.
 
-    - No Windows:
-        ```sh
-        venv\Scripts\activate
-        ```
-    - No Linux/MacOS:
-        ```sh
-        source venv/bin/activate
-        ```
+## Contribuindo
 
-4. **Instale as dependências:**
-    ```sh
-    pip install -r requirements.txt
-    ```
+Contribuições são bem-vindas! Se você encontrar algum problema, bug ou tiver ideias para melhorias, sinta-se à vontade para abrir uma issue ou enviar um pull request.
 
-## Configuração
+## Licença
 
-Antes de executar a aplicação, certifique-se de configurar as informações de conexão com o banco de dados MySQL no arquivo principal do projeto.
-
-```python
-self.con = connect(
-    user='seu_usuario',
-    password='sua_senha',
-    host='localhost',
-    port='3306',
-    database='seu_banco_de_dados',
-)
+Este projeto está licenciado sob a Licença MIT. Consulte o arquivo LICENSE para obter mais detalhes.
